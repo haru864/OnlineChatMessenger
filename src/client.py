@@ -5,7 +5,7 @@ import json
 
 server_address: str = "127.0.0.1"
 server_port: int = 9001
-BUFFER_SIZE: int = 4096
+BUFFER_SIZE: int = 256
 
 
 def getResponse(socket) -> str:
@@ -13,7 +13,7 @@ def getResponse(socket) -> str:
     return response.decode("utf-8")
 
 
-def login(sock) -> None:
+def login(sock) -> str:
     print("login")
     while True:
         username: str = input("username > ")
@@ -23,24 +23,24 @@ def login(sock) -> None:
         request_data_str: str = json.dumps(request_data) + "\n"
         sock.send(request_data_str.encode("utf-8"))
         response: str = getResponse(sock)
-        # print(f"login response -> {response}")
         response_dict = json.loads(response)
         print(response_dict["message"])
         if response_dict["status"] == 0:
-            break
+            return username
 
 
 sock: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.settimeout(7.0)
+sock.settimeout(5.0)
 print("connecting to {}".format((server_address, server_port)))
 
 while True:
     try:
         sock.connect((server_address, server_port))
-        login(sock)
+        username = login(sock)
+        room = None
         isActive = True
         while isActive:
-            command: str = input(">> ")
+            command: str = input(f"({username}@{room}) >> ")
             request_data: dict[str, str] = {}
             request_data["command"] = command
             if command == "create":
@@ -78,6 +78,6 @@ while True:
         print(err)
         sys.exit(1)
     finally:
-        print("Closing socket")
+        print("Close socket")
         sock.close()
         sys.exit(0)

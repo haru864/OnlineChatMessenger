@@ -12,16 +12,10 @@ class ChatClient:
 
 
 class ChatRoom:
-    def __init__(
-        self, title: str, max_num_of_participants: int, host: ChatClient
-    ) -> None:
-        self.title = title
+    def __init__(self, roomname: str, max_num_of_participants: int, host: str) -> None:
+        self.roomname = roomname
         self.max_num_of_participants = max_num_of_participants
         self.host = host
 
     def __str__(self) -> str:
-        return (
-            f"ChatRoom{{title:{self.title}, "
-            f"max_num_of_participants:{self.max_num_of_participants}, "
-            f"host:{self.host}}}"
-        )
+        return f"ChatRoom{{title:{self.title}, max_num_of_participants:{self.max_num_of_participants}, host:{self.host}}}"

@@ -1,36 +1,36 @@
-import chatroom
+import chat
 import asyncio
 import json
 
-room_title_to_chatrooms: dict[str, chatroom.ChatRoom] = {}
-client_key_to_chatrooms: dict[str, chatroom.ChatRoom] = {}
+roomname_to_chatrooms: dict[str, chat.ChatRoom] = {}
+client_key_to_chatrooms: dict[str, chat.ChatRoom] = {}
 active_username: set[str] = set()
 
 BUFFER_SIZE: int = 256
-TIMEOUT_SECONDS: float = 60.0
+TIMEOUT_SECONDS: float = 30.0
 
 
 def createChatRoom(
-    room_title: str, max_num_of_participants: int, host: chatroom.ChatClient
+    room_title: str, max_num_of_participants: int, host: chat.ChatClient
 ) -> None:
-    if room_title in room_title_to_chatrooms:
+    if room_title in roomname_to_chatrooms:
         raise Exception(f"Chatroom '{room_title}' already exists")
-    new_chatroom = chatroom.ChatRoom(
+    new_chatroom = chat.ChatRoom(
         title=room_title, max_num_of_participants=max_num_of_participants, host=host
     )
-    room_title_to_chatrooms[room_title] = new_chatroom
+    roomname_to_chatrooms[room_title] = new_chatroom
     print(f"Chatroom '{room_title}' was created")
     return None
 
 
-def joinChatRoom(client: chatroom.ChatClient, room_title: str) -> None:
+def joinChatRoom(client: chat.ChatClient, room_title: str) -> None:
     client_key: str = client.generateKey()
     if client_key in client_key_to_chatrooms:
-        chat_room: chatroom.ChatRoom = client_key_to_chatrooms[client_key]
+        chat_room: chat.ChatRoom = client_key_to_chatrooms[client_key]
         raise Exception(
             f"Client '{client}' have already been in chat room '{chat_room}'"
         )
-    client_key_to_chatrooms[client_key] = room_title_to_chatrooms[room_title]
+    client_key_to_chatrooms[client_key] = roomname_to_chatrooms[room_title]
     print(f"'{client}' joined chatroom '{room_title}'")
     return None
 
@@ -64,9 +64,6 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                     else:
                         username = username_candidate
                         active_username.add(username)
-                        chatclient = chatroom.ChatClient(
-                            client_address[0], client_address[1], username
-                        )
                         print(f"User '{username}' login")
                         response_dict["status"] = 0
                         response_dict[
@@ -81,6 +78,25 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 response_dict["status"] = 0
                 response_dict["message"] = f"Goodbye, {username}!"
                 isActive = False
+            elif command == "create":
+                roomname = message_dict["roomname"]
+                max_num_of_participants = message_dict["max_num_of_participants"]
+                if roomname in roomname_to_chatrooms:
+                    response_dict["status"] = 1
+                    response_dict["message"] = f"Chatroom '{roomname}' already exist"
+                else:
+                    new_chat_room = chat.ChatRoom(
+                        roomname, max_num_of_participants, username
+                    )
+                    roomname_to_chatrooms[roomname] = new_chat_room
+                    response_dict["status"] = 0
+                    response_dict["message"] = f"Chatroom '{roomname}' is created"
+            elif command == "list":
+                roomname_list = [
+                    chatroom.roomname for chatroom in roomname_to_chatrooms.values()
+                ]
+                response_dict["status"] = 0
+                response_dict["message"] = roomname_list
             else:
                 response_dict["status"] = 1
                 response_dict["message"] = "Your current request is invalid"
@@ -93,12 +109,13 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             print(
                 f"No data received in {TIMEOUT_SECONDS} seconds. Closing the connection."
             )
-            writer.write(b"Timeout!")
+            writer.write(b'{"status":1, "message":"Timeout!"}')
             await writer.drain()
 
         except Exception as e:
             print("Error: " + str(e))
-            writer.write(str(e).encode("utf-8"))
+            response_message = f'{{"status":1, "message":{str(e)}}}'
+            writer.write(response_message.encode("utf-8"))
             await writer.drain()
 
     print("Closing current connection to", client_address)
