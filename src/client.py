@@ -1,6 +1,11 @@
 import socket
 import sys
 import os
+import json
+
+server_address: str = "127.0.0.1"
+server_port: int = 9001
+BUFFER_SIZE: int = 4096
 
 
 def getResponse(socket) -> str:
@@ -8,38 +13,50 @@ def getResponse(socket) -> str:
     return response.decode("utf-8")
 
 
-def login(socket) -> None:
-    username: str = input("username: ")
-    sock.send(username.encode("utf-8"))
+def login(sock) -> None:
+    print("login")
+    while True:
+        username: str = input("username > ")
+        request_data: dict[str, str] = {}
+        request_data["command"] = "login"
+        request_data["username"] = username
+        request_data_str: str = json.dumps(request_data) + "\n"
+        sock.send(request_data_str.encode("utf-8"))
+        response: str = getResponse(sock)
+        # print(f"login response -> {response}")
+        response_dict = json.loads(response)
+        print(response_dict["message"])
+        if response_dict["status"] == 0:
+            break
 
 
 sock: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_address: str = "127.0.0.1"
-server_port: int = 9001
-BUFFER_SIZE: int = 256
-
+sock.settimeout(7.0)
 print("connecting to {}".format((server_address, server_port)))
 
 while True:
     try:
         sock.connect((server_address, server_port))
         login(sock)
-        while True:
+        isActive = True
+        while isActive:
             command: str = input(">> ")
+            request_data: dict[str, str] = {}
+            request_data["command"] = command
             if command == "create":
-                title: str = input("Title of chatroom > ")
+                roomname: str = input("room name > ")
                 max_num_of_participants: int = int(
                     input("Max number of participants > ")
                 )
-                request_data: str = f"create:{title}:{max_num_of_participants}\n"
-                sock.send(request_data.encode("utf-8"))
+                request_data["roomname"] = roomname
+                request_data["max_num_of_participants"] = max_num_of_participants
             elif command == "join":
-                pass
+                roomname: str = input("room name > ")
+                request_data["roomname"] = roomname
             elif command == "list":
-                sock.send("list\n".encode("utf-8"))
-            elif command == "close":
-                sock.send("close\n".encode("utf-8"))
-                break
+                pass
+            elif command == "logout":
+                isActive = False
             elif command == "help":
                 current_file_path: str = os.path.abspath(__file__)
                 current_directory = os.path.dirname(current_file_path)
@@ -52,8 +69,11 @@ while True:
             else:
                 print("Invalid command. Type 'help' to find out how to operate.")
                 continue
+            request_data_str: str = json.dumps(request_data) + "\n"
+            sock.send(request_data_str.encode("utf-8"))
             response: str = getResponse(sock)
-            print(response)
+            response_dict = json.loads(response)
+            print(response_dict["message"])
     except Exception as err:
         print(err)
         sys.exit(1)

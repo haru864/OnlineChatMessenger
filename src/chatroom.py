@@ -1,17 +1,14 @@
 class ChatClient:
-    def __init__(self, address: str, port: int, name: str) -> None:
+    def __init__(self, address: str, port: int, username: str) -> None:
         self.address = address
         self.port = port
-        self.name = name
+        self.username = username
 
     def generateKey(self) -> str:
-        return self.address + str(self.port)
+        return self.address + ":" + str(self.port)
 
     def __str__(self) -> str:
-        return (
-            f"ChatRoom{{address:{self.address}, "
-            f"port:{self.port}, name:{self.name}}}"
-        )
+        return f"ChatRoom{{address:{self.address}, port:{self.port}, name:{self.username}}}"
 
 
 class ChatRoom:

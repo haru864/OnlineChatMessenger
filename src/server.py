@@ -1,8 +1,11 @@
-import socket
 import chatroom
+import asyncio
+import json
 
 room_title_to_chatrooms: dict[str, chatroom.ChatRoom] = {}
 client_key_to_chatrooms: dict[str, chatroom.ChatRoom] = {}
+active_username: set[str] = set()
+
 BUFFER_SIZE: int = 256
 TIMEOUT_SECONDS: float = 60.0
 
@@ -32,66 +35,86 @@ def joinChatRoom(client: chatroom.ChatClient, room_title: str) -> None:
     return None
 
 
-def main():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_address = "127.0.0.1"
-    server_port = 9001
-    print("Starting up on {} port {}".format(server_address, server_port))
+async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    client_address = writer.get_extra_info("peername")
+    print(f"Connected from {client_address}")
+    username = None
+    isActive = True
 
-    sock.bind((server_address, server_port))
-    sock.listen(1)
-
-    while True:
-        client_socket, client_address = sock.accept()
-        print("connection from", client_address)
-        client_socket.settimeout(TIMEOUT_SECONDS)
+    while isActive:
         try:
-            username = client_socket.recv(BUFFER_SIZE)
-            client = chatroom.ChatClient(client_address[0], client_address[1], username)
-            data_buffer: bytes = b""
-            line: bytes = b""
-            isActiveConnection = True
-            while isActiveConnection:
-                while True:
-                    chunk = client_socket.recv(BUFFER_SIZE)
-                    print("received data ->", chunk)
-                    if chunk == b"":
-                        isActiveConnection = False
-                        break
-                    data_buffer += chunk
-                    if b"\n" in data_buffer:
-                        line, data_buffer = data_buffer.split(b"\n", 1)
-                        break
-                words: list[str] = line.decode("utf-8").split(":")
-                print(f"line -> {line}")
-                print(f"data_buffer -> {data_buffer}")
-                print(f"words -> {words}")
-                if words[0] == "list":
-                    titles: list[str] = list(room_title_to_chatrooms.keys())
-                    client_socket.send(",".join(titles).encode("utf-8"))
-                elif words[0] == "create":
-                    title: str = words[1]
-                    max_num_of_participants: str = words[2]
-                    createChatRoom(title, int(max_num_of_participants), client)
-                    client_socket.send(
-                        f"New chatroom '{title}' was created".encode("utf-8")
-                    )
-                elif words[0] == "close":
-                    break
+            data = await asyncio.wait_for(reader.readline(), TIMEOUT_SECONDS)
+            message_str = data.decode("utf-8")
+            print(f"Received {message_str} from {client_address}")
+            message_dict = json.loads(message_str)
+            command = message_dict["command"]
+            response_dict = {}
+
+            if username is None:
+                if command == "login":
+                    username_candidate = message_dict["username"]
+                    if (
+                        len(username_candidate) == 0
+                        or username_candidate in active_username
+                    ):
+                        response_dict["status"] = 1
+                        response_dict[
+                            "message"
+                        ] = f"Username '{username_candidate}' is already used"
+                    else:
+                        username = username_candidate
+                        active_username.add(username)
+                        chatclient = chatroom.ChatClient(
+                            client_address[0], client_address[1], username
+                        )
+                        print(f"User '{username}' login")
+                        response_dict["status"] = 0
+                        response_dict[
+                            "message"
+                        ] = f"Welcome to Online Chat Messenger, {username}!"
                 else:
-                    pass
-        except socket.timeout:
+                    response_dict["status"] = 1
+                    response_dict["message"] = "Please login first"
+            elif command == "logout":
+                active_username.remove(username)
+                print(f"User '{username}' logout")
+                response_dict["status"] = 0
+                response_dict["message"] = f"Goodbye, {username}!"
+                isActive = False
+            else:
+                response_dict["status"] = 1
+                response_dict["message"] = "Your current request is invalid"
+
+            response_str = json.dumps(response_dict)
+            writer.write(response_str.encode("utf-8"))
+            await writer.drain()
+
+        except asyncio.TimeoutError:
             print(
-                f"No data received in {TIMEOUT_SECONDS} seconds. "
-                f"Closing the connection."
+                f"No data received in {TIMEOUT_SECONDS} seconds. Closing the connection."
             )
+            writer.write(b"Timeout!")
+            await writer.drain()
+
         except Exception as e:
             print("Error: " + str(e))
-            client_socket.send(str(e).encode("utf-8"))
-        finally:
-            print("Closing current connection to", client_address)
-            client_socket.close()
+            writer.write(str(e).encode("utf-8"))
+            await writer.drain()
+
+    print("Closing current connection to", client_address)
+    writer.close()
+    await writer.wait_closed()
+
+
+async def main():
+    server_address = "0.0.0.0"
+    server_port = 9001
+    server = await asyncio.start_server(handle_client, server_address, server_port)
+    addr = server.sockets[0].getsockname()
+    print(f"Serving on {addr}")
+    async with server:
+        await server.serve_forever()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
