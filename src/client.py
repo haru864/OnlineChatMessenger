@@ -4,8 +4,8 @@ import sys
 import os
 import json
 
-server_address: str = "127.0.0.1"
-server_port: int = 9001
+tcp_server_address: str = "127.0.0.1"
+tcp_server_port: int = 9001
 BUFFER_SIZE: int = 256
 
 
@@ -35,12 +35,13 @@ def login(sock) -> str:
 
 
 sock: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.settimeout(30.0)
-print("connecting to {}".format((server_address, server_port)))
+sock.settimeout(60.0)
 
 while True:
     try:
-        sock.connect((server_address, server_port))
+        sock.connect((tcp_server_address, tcp_server_port))
+        print("connecting to {}".format((tcp_server_address, tcp_server_port)))
+
         username = login(sock)
         current_room = None
         isActive = True
@@ -65,6 +66,8 @@ while True:
                 request_data["roomname"] = roomname
                 current_room = roomname
             elif command == "list":
+                pass
+            elif command == "leave":
                 pass
             elif command == "logout":
                 isActive = False
@@ -95,9 +98,13 @@ while True:
                     port_udp = message[1]
                     print(f"UDP -> {address_udp}, {port_udp}")
                     udp_socket.sendto(
-                        f"Hello via UDP from {username}".encode(), (address_udp, port_udp)
+                        f"Hello via UDP from {username}".encode(),
+                        (address_udp, port_udp),
                     )
                     udp_socket.close()
+            elif command == "leave":
+                if status == 0:
+                    current_room = None
 
     except Exception as err:
         print(err)

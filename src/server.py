@@ -1,17 +1,18 @@
+import traceback
 import chat
 import asyncio
 import json
 
 roomname_to_chatroom: dict[str, chat.ChatRoom] = {}
-username_to_chatclient: dict[str, chat.ChatRoom | None] = {}
+username_to_chatclient: dict[str, chat.ChatClient] = {}
 
 BUFFER_SIZE: int = 256
-TIMEOUT_SECONDS: float = 30.0
+TIMEOUT_SECONDS: float = 60.0
 
 
 class UdpProtocol(asyncio.DatagramProtocol):
     def datagram_received(self, data, addr):
-        print(f"Received {data.decode()} from {addr}")
+        print(f"(UDP) Received {data.decode()} from {addr}")
 
 
 async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -24,7 +25,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
         try:
             data = await asyncio.wait_for(reader.readline(), TIMEOUT_SECONDS)
             message_str = data.decode("utf-8")
-            print(f"[{str(client)}] Received {message_str} from {client_address}")
+            print(f"(TCP) Received {message_str} from {client_address}")
             message_dict = json.loads(message_str)
             command = message_dict["command"]
             response_dict = {}
@@ -58,12 +59,14 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 response_dict["status"] = 0
                 response_dict["message"] = "You already log in"
 
-            # TODO：logout時にチャットルームから退出する
             elif command == "logout":
-                current_chatroom = client.chatroom
-                current_chatroom.leaveRoom(client)
-                if current_chatroom.isEmpty():
-                    del roomname_to_chatroom[current_chatroom.roomname]
+                if client.chatroom:
+                    current_chatroom = client.chatroom
+                    roomname = current_chatroom.roomname
+                    current_chatroom.leaveRoom(client)
+                    if current_chatroom.isEmptyRoom():
+                        del roomname_to_chatroom[roomname]
+                        del current_chatroom
                 del username_to_chatclient[client.username]
                 print(f"[{client.username}] User '{client.username}' logout")
                 response_dict["status"] = 0
@@ -83,22 +86,22 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                     ) = await asyncio.get_running_loop().create_datagram_endpoint(
                         lambda: UdpProtocol(), local_addr=("0.0.0.0", 0)
                     )
-                    address_udp = transport.get_extra_info("sockname")[0]
-                    port_udp = transport.get_extra_info("sockname")[1]
 
-                    new_chat_room = chat.ChatRoom(
-                        address_udp,
-                        port_udp,
+                    new_chatroom = chat.ChatRoom(
+                        transport,
                         roomname,
                         max_num_of_participants,
                         client,
                     )
-                    roomname_to_chatroom[roomname] = new_chat_room
+                    roomname_to_chatroom[roomname] = new_chatroom
                     print(
-                        f"Chatroom '{roomname}' is created, switch to UDP on ({address_udp}, {port_udp})"
+                        f"Chatroom '{roomname}' is created, UDP on ({new_chatroom.getUdpAddress()}, {new_chatroom.getUdpPort()})"
                     )
                     response_dict["status"] = 0
-                    response_dict["message"] = [address_udp, port_udp]
+                    response_dict["message"] = [
+                        new_chatroom.getUdpAddress(),
+                        new_chatroom.getUdpPort(),
+                    ]
 
             elif command == "list":
                 response_dict["status"] = 0
@@ -119,19 +122,33 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             elif command == "join":
                 roomname = message_dict["roomname"]
                 if roomname not in roomname_to_chatroom:
-                    response_dict["status"] = 1
+                    response_dict["status"] = 0
                     response_dict["message"] = f"Chatroom '{roomname}' does not exist"
                 else:
                     target_chat_room = roomname_to_chatroom[roomname]
                     target_chat_room.joinRoom(client)
-                    address_udp = target_chat_room.address
-                    port_udp = target_chat_room.port
+                    print(
+                        f"{client.username} join Chatroom '{target_chat_room.roomname}'"
+                    )
                     response_dict["status"] = 0
-                    response_dict["message"] = [address_udp, port_udp]
+                    response_dict["message"] = [
+                        target_chat_room.getUdpAddress(),
+                        target_chat_room.getUdpPort(),
+                    ]
 
-            # TODO：チャットルーム退出ロジックを実装する
             elif command == "leave":
-                pass
+                if client.chatroom:
+                    current_chatroom = client.chatroom
+                    roomname = current_chatroom.roomname
+                    current_chatroom.leaveRoom(client)
+                    if current_chatroom.isEmptyRoom():
+                        del roomname_to_chatroom[roomname]
+                        del current_chatroom
+                    response_dict["status"] = 0
+                    response_dict["message"] = f"leave chatroom '{roomname}'"
+                else:
+                    response_dict["status"] = 0
+                    response_dict["message"] = f"You're not belong to any chatroom"
 
             else:
                 response_dict["status"] = 1
@@ -152,6 +169,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
 
         except Exception as e:
             print(f"[{str(client)}] Error: " + str(e))
+            print(f"詳細なトレースバック情報:\n{traceback.format_exc()}")
             response_message = f'{{"status":1, "message":{str(e)}}}'
             writer.write(response_message.encode("utf-8"))
             await writer.drain()
