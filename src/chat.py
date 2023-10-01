@@ -29,6 +29,8 @@ class ChatRoom:
         max_num_of_participants: int,
         host: ChatClient,
     ) -> None:
+        if max_num_of_participants < 2:
+            raise Exception("max_num_of_participants must be greater than one")
         self.udp_transport: asyncio.DatagramTransport = udp_transport
         self.roomname: str = roomname
         self.max_num_of_participants: int = max_num_of_participants
@@ -47,6 +49,8 @@ class ChatRoom:
         return None
 
     def addClientToRoom(self, participant: ChatClient) -> None:
+        if self.isFullRoom():
+            raise Exception(f"Chatroom '{self.roomname}' is full now")
         self.participants.append(participant)
         participant.chatroom = self
         return None
@@ -58,7 +62,10 @@ class ChatRoom:
         participant.chatroom = None
         return None
 
-    def isEmptyRoom(self) -> None:
+    def isFullRoom(self) -> bool:
+        return len(self.participants) == self.max_num_of_participants
+
+    def isEmptyRoom(self) -> bool:
         return len(self.participants) == 0
 
     def __str__(self) -> str:

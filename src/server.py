@@ -175,7 +175,6 @@ async def handle_client(
             print(f"[{str(client)}] Error: " + str(e))
             print(f"詳細なトレースバック情報:\n{traceback.format_exc()}")
             await sendResponse(writer, {"status": 1, "error_message": str(e)})
-            break
 
     removeClientFromChatroom(client)
     del username_to_chatclient[client.username]

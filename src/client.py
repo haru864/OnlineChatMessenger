@@ -24,7 +24,7 @@ def getResponse(request_data: dict) -> dict[str, Any]:
 def login() -> str:
     print("login")
     while True:
-        username: str = input("username > ")
+        username: str = input("username >> ")
         request_data: dict[str, str] = {}
         request_data["command"] = "login"
         request_data["username"] = username
@@ -52,15 +52,15 @@ while True:
             request_data["command"] = command
 
             if command == "create":
-                roomname: str = input("room name > ")
+                roomname: str = input("room name >> ")
                 max_num_of_participants: int = int(
-                    input("Max number of participants > ")
+                    input("Max number of participants >> ")
                 )
                 current_room = roomname
                 request_data["roomname"] = roomname
                 request_data["max_num_of_participants"] = max_num_of_participants
             elif command == "join":
-                roomname: str = input("room name > ")
+                roomname: str = input("room name >> ")
                 request_data["roomname"] = roomname
                 current_room = roomname
             elif command == "list":
@@ -88,7 +88,6 @@ while True:
             if response["status"] == 1:
                 error_message = response["error_message"]
                 print(f"Error: {error_message}")
-                continue
 
             if command in ("create", "join"):
                 if response["status"] == 1:
