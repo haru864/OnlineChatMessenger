@@ -8,41 +8,39 @@ tcp_server_address: str = "127.0.0.1"
 tcp_server_port: int = 9001
 BUFFER_SIZE: int = 256
 
+sock: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.settimeout(60.0)
 
-def getResponse(sock) -> tuple[str, Any]:
+
+def getResponse(request_data: dict) -> dict[str, Any]:
+    request_data_str: str = json.dumps(request_data) + "\n"
+    sock.send(request_data_str.encode("utf-8"))
     response: bytes = sock.recv(BUFFER_SIZE)
     response_str: str = response.decode("utf-8")
     response_dict = json.loads(response_str)
-    status = response_dict["status"]
-    message = response_dict["message"]
-    # print(f"response_dict -> {response_dict}")
-    return (status, message)
+    return response_dict
 
 
-def login(sock) -> str:
+def login() -> str:
     print("login")
     while True:
         username: str = input("username > ")
         request_data: dict[str, str] = {}
         request_data["command"] = "login"
         request_data["username"] = username
-        request_data_str: str = json.dumps(request_data) + "\n"
-        sock.send(request_data_str.encode("utf-8"))
-        status, message = getResponse(sock)
-        print(message)
-        if status == 0:
+        response_dict = getResponse(request_data)
+        if response_dict["status"] == 0:
+            print(f"Welcome to Online Chat Messenger, {username}!")
             return username
+        print(response_dict["error_message"])
 
-
-sock: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.settimeout(60.0)
 
 while True:
     try:
         sock.connect((tcp_server_address, tcp_server_port))
         print("connecting to {}".format((tcp_server_address, tcp_server_port)))
 
-        username = login(sock)
+        username = login()
         current_room = None
         isActive = True
 
@@ -84,27 +82,35 @@ while True:
                 print("Invalid command. Type 'help' to find out how to operate.")
                 continue
 
-            request_data_str: str = json.dumps(request_data) + "\n"
-            sock.send(request_data_str.encode("utf-8"))
-            status, message = getResponse(sock)
-            print(message)
+            response = getResponse(request_data)
+            print(f"response -> {response}")
+
+            if response["status"] == 1:
+                error_message = response["error_message"]
+                print(f"Error: {error_message}")
+                continue
 
             if command in ("create", "join"):
-                if status == 1:
+                if response["status"] == 1:
                     current_room = None
                 else:
                     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    address_udp = message[0]
-                    port_udp = message[1]
+                    address_udp = response["udp_address"]
+                    port_udp = response["udp_port"]
                     print(f"UDP -> {address_udp}, {port_udp}")
-                    udp_socket.sendto(
-                        f"Hello via UDP from {username}".encode(),
-                        (address_udp, port_udp),
-                    )
-                    udp_socket.close()
+                    # udp_socket.sendto(
+                    #     f"Hello via UDP from {username}".encode(),
+                    #     (address_udp, port_udp),
+                    # )
+                    # udp_socket.close()
             elif command == "leave":
-                if status == 0:
+                if response["status"] == 0:
                     current_room = None
+            elif command == "list":
+                if "member_list" in response:
+                    print("member_list: " + str(response.get("member_list")))
+                elif "room_list" in response:
+                    print("room_list: " + str(response.get("room_list")))
 
     except Exception as err:
         print(err)

@@ -42,16 +42,16 @@ class ChatRoom:
     def getUdpPort(self) -> int:
         return self.udp_transport.get_extra_info("sockname")[1]
 
-    def closeUdpServer(self) -> None:
+    def closeRoom(self) -> None:
         self.udp_transport.close()
         return None
 
-    def joinRoom(self, participant: ChatClient) -> None:
+    def addClientToRoom(self, participant: ChatClient) -> None:
         self.participants.append(participant)
         participant.chatroom = self
         return None
 
-    def leaveRoom(self, participant: ChatClient) -> None:
+    def removeClientFromRoom(self, participant: ChatClient) -> None:
         if participant == self.host:
             self.host = self.participants[0] if len(self.participants) > 0 else None
         self.participants.remove(participant)

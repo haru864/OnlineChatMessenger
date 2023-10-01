@@ -1,0 +1,90 @@
+# ログイン
+リクエスト
+{
+    "command": "login",
+    "username": "{username}"
+}
+レスポンス
+{
+    "status": {status},              // 終了ステータス 成功:0、エラー:1
+    "error_message": "{message}"     // エラーメッセージ（エラー時のみ設定）
+}
+
+# チャットルーム/参加者の一覧を取得する
+リクエスト
+{
+    "command": "list"
+}
+レスポンス
+{
+    "status": {status},              // 終了ステータス 成功:0、エラー:1
+    "room_list": [{roomname}, {roomname}...] // チャットルームの一覧（チャットルーム未参加時のみ設定）
+    "member_list": [{username}, {username}...] // チャットルーム参加者の一覧（チャットルーム参加時のみ設定）
+    "error_message": "{message}"      // エラーメッセージ（エラー時のみ設定）
+}
+
+# チャットルームを作成する
+リクエスト
+{
+    "command": "create",
+    "roomname": "{roomname}",
+    "max_num_of_participants": "{max_num_of_participants}"
+}
+レスポンス
+{
+    "status": {status},              // 終了ステータス 成功:0、エラー:1
+    "udp_address": "{address}",      // チャットルームのUDPアドレス
+    "udp_port": "{port}",            // チャットルームのUDPポート番号
+    "error_message": "{message}"      // エラーメッセージ（エラー時のみ設定）
+}
+
+# チャットルームに参加する
+リクエスト
+{
+    "command": "join",
+    "roomname": "{roomname}"
+}
+レスポンス（createコマンドと同じ）
+{
+    "status": {status},              // 終了ステータス 成功:0、エラー:1
+    "udp_address": "{address}",      // チャットルームのUDPアドレス（チャットルーム存在時のみ設定）
+    "udp_port": "{port}",            // チャットルームのUDPポート番号（チャットルーム存在時のみ設定）
+    "error_message": "{message}"      // エラーメッセージ（エラー時のみ設定）
+}
+
+# メッセージを送信する
+(メッセージの送信時に、送信者がサーバ内のチャットルームに参加していることを確認する)
+リクエスト
+{
+    "command": "send",              //
+    "roomname": "{roomname}",       // 参加した部屋を示す文字列
+    "message": "{message}",         // メッセージのサイズ
+    "size": "{message-size}"        // チャットに参加した全ての人に送信するメッセージ
+}
+レスポンス
+{
+    "status": {status},              // 終了ステータス 成功:0、エラー:1
+    "error_message": "{message}"     // エラーメッセージ（エラー時のみ設定）
+}
+
+# チャットルームから退出する
+リクエスト
+{
+    "command": "leave"
+}
+レスポンス
+{
+    "status": {status},              // 終了ステータス 成功:0、エラー:1
+    "error_message": "{message}"     // エラーメッセージ（エラー時のみ設定）
+}
+
+# 接続を終了する
+リクエスト
+{
+    "command": "logout"
+}
+レスポンス
+{
+    "status": {status},              // 終了ステータス 成功:0、エラー:1
+    "error_message": "{message}"     // エラーメッセージ（エラー時のみ設定）
+}

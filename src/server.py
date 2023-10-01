@@ -1,3 +1,4 @@
+from typing import Any
 import traceback
 import chat
 import asyncio
@@ -15,70 +16,93 @@ class UdpProtocol(asyncio.DatagramProtocol):
         print(f"(UDP) Received {data.decode()} from {addr}")
 
 
-async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+async def getRequest(reader: asyncio.StreamReader) -> dict[str:Any]:
+    data = await asyncio.wait_for(reader.readline(), TIMEOUT_SECONDS)
+    response_str = data.decode("utf-8")
+    response_dict = json.loads(response_str)
+    return response_dict
+
+
+async def sendResponse(
+    writer: asyncio.StreamWriter, response_dict: dict[str:Any]
+) -> None:
+    response_str = json.dumps(response_dict)
+    writer.write(response_str.encode("utf-8"))
+    await writer.drain()
+    return None
+
+
+def removeClientFromChatroom(client: chat.ChatClient) -> None:
+    if client.chatroom:
+        current_chatroom = client.chatroom
+        roomname = current_chatroom.roomname
+        current_chatroom.removeClientFromRoom(client)
+        if current_chatroom.isEmptyRoom():
+            del roomname_to_chatroom[roomname]
+            del current_chatroom
+
+
+async def handle_client(
+    reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+) -> None:
     client_address = writer.get_extra_info("peername")
     print(f"Connected from {client_address}")
     client: chat.ChatClient = None
-    isActive = True
 
-    while isActive:
+    while not client:
+        request_dict = await getRequest(reader)
+        command = request_dict.get("command")
+        username = request_dict.get("username")
+        if command != "login":
+            response = {
+                "status": 1,
+                "error_message": "Login first",
+            }
+        elif not username or len(username) == 0:
+            response = {
+                "status": 1,
+                "error_message": "Username must be 1 character or more",
+            }
+        elif username in username_to_chatclient:
+            response = {
+                "status": 1,
+                "error_message": f"Username '{username}' is already used",
+            }
+        else:
+            client = chat.ChatClient(client_address[0], client_address[1], username)
+            username_to_chatclient[client.username] = client
+            print(f"User '{client.username}' login")
+            response = {"status": 0}
+        await sendResponse(writer, response)
+
+    while True:
         try:
-            data = await asyncio.wait_for(reader.readline(), TIMEOUT_SECONDS)
-            message_str = data.decode("utf-8")
-            print(f"(TCP) Received {message_str} from {client_address}")
-            message_dict = json.loads(message_str)
-            command = message_dict["command"]
-            response_dict = {}
+            request_dict = await getRequest(reader)
+            print(f"request_dict -> {request_dict}")
+            command = request_dict.get("command")
+            response = {}
 
-            if client is None:
-                if command == "login":
-                    username_candidate = message_dict["username"]
-                    if (
-                        len(username_candidate) == 0
-                        or username_candidate in username_to_chatclient
-                    ):
-                        response_dict["status"] = 1
-                        response_dict[
-                            "message"
-                        ] = f"Username '{username_candidate}' is already used"
-                    else:
-                        client = chat.ChatClient(
-                            client_address[0], client_address[1], username_candidate
-                        )
-                        username_to_chatclient[client.username] = client
-                        print(f"User '{client.username}' login")
-                        response_dict["status"] = 0
-                        response_dict[
-                            "message"
-                        ] = f"Welcome to Online Chat Messenger, {client.username}!"
-                else:
-                    response_dict["status"] = 1
-                    response_dict["message"] = "Please login first"
+            if command == "logout":
+                print(f"User '{client.username}' logout")
+                response["status"] = 0
+                await sendResponse(writer, response)
+                break
 
-            elif command == "login":
-                response_dict["status"] = 0
-                response_dict["message"] = "You already log in"
-
-            elif command == "logout":
+            elif command == "leave":
+                removeClientFromChatroom(client)
                 if client.chatroom:
-                    current_chatroom = client.chatroom
-                    roomname = current_chatroom.roomname
-                    current_chatroom.leaveRoom(client)
-                    if current_chatroom.isEmptyRoom():
-                        del roomname_to_chatroom[roomname]
-                        del current_chatroom
-                del username_to_chatclient[client.username]
-                print(f"[{client.username}] User '{client.username}' logout")
-                response_dict["status"] = 0
-                response_dict["message"] = f"Goodbye, {client.username}!"
-                isActive = False
+                    response["status"] = 0
+                else:
+                    response["status"] = 1
+                    response["error_message"] = "You have not joined any chatroom"
+                await sendResponse(writer, response)
 
             elif command == "create":
-                roomname = message_dict["roomname"]
-                max_num_of_participants = message_dict["max_num_of_participants"]
+                roomname = request_dict["roomname"]
+                max_num_of_participants = request_dict["max_num_of_participants"]
                 if roomname in roomname_to_chatroom:
-                    response_dict["status"] = 1
-                    response_dict["message"] = f"Chatroom '{roomname}' already exist"
+                    response["status"] = 1
+                    response["error_message"] = f"Chatroom '{roomname}' already exist"
                 else:
                     (
                         transport,
@@ -86,7 +110,6 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                     ) = await asyncio.get_running_loop().create_datagram_endpoint(
                         lambda: UdpProtocol(), local_addr=("0.0.0.0", 0)
                     )
-
                     new_chatroom = chat.ChatRoom(
                         transport,
                         roomname,
@@ -97,90 +120,70 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                     print(
                         f"Chatroom '{roomname}' is created, UDP on ({new_chatroom.getUdpAddress()}, {new_chatroom.getUdpPort()})"
                     )
-                    response_dict["status"] = 0
-                    response_dict["message"] = [
-                        new_chatroom.getUdpAddress(),
-                        new_chatroom.getUdpPort(),
-                    ]
+                    response["status"] = 0
+                    response["udp_address"] = new_chatroom.getUdpAddress()
+                    response["udp_port"] = new_chatroom.getUdpPort()
+                await sendResponse(writer, response)
 
             elif command == "list":
-                response_dict["status"] = 0
+                response["status"] = 0
                 if client.chatroom is None:
                     roomname_list = [
                         chatroom.roomname for chatroom in roomname_to_chatroom.values()
                     ]
-                    response_dict["message"] = "chatrooms: " + str(roomname_list)
+                    response["room_list"] = roomname_list
                 else:
                     members = [
-                        participant.username
+                        f"{participant.username}(host)"
+                        if participant == client.chatroom.host
+                        else participant.username
                         for participant in client.chatroom.participants
                     ]
-                    response_dict[
-                        "message"
-                    ] = f"members@{client.chatroom.roomname}: " + str(members)
+                    response["member_list"] = members
+                await sendResponse(writer, response)
 
             elif command == "join":
-                roomname = message_dict["roomname"]
+                roomname = request_dict["roomname"]
                 if roomname not in roomname_to_chatroom:
-                    response_dict["status"] = 0
-                    response_dict["message"] = f"Chatroom '{roomname}' does not exist"
+                    response["status"] = 1
+                    response["error_message"] = f"Chatroom '{roomname}' does not exist"
                 else:
                     target_chat_room = roomname_to_chatroom[roomname]
-                    target_chat_room.joinRoom(client)
+                    target_chat_room.addClientToRoom(client)
                     print(
                         f"{client.username} join Chatroom '{target_chat_room.roomname}'"
                     )
-                    response_dict["status"] = 0
-                    response_dict["message"] = [
-                        target_chat_room.getUdpAddress(),
-                        target_chat_room.getUdpPort(),
-                    ]
-
-            elif command == "leave":
-                if client.chatroom:
-                    current_chatroom = client.chatroom
-                    roomname = current_chatroom.roomname
-                    current_chatroom.leaveRoom(client)
-                    if current_chatroom.isEmptyRoom():
-                        del roomname_to_chatroom[roomname]
-                        del current_chatroom
-                    response_dict["status"] = 0
-                    response_dict["message"] = f"leave chatroom '{roomname}'"
-                else:
-                    response_dict["status"] = 0
-                    response_dict["message"] = f"You're not belong to any chatroom"
+                    response["status"] = 0
+                    response["udp_address"] = target_chat_room.getUdpAddress()
+                    response["udp_port"] = target_chat_room.getUdpPort()
+                await sendResponse(writer, response)
 
             else:
-                response_dict["status"] = 1
-                response_dict["message"] = "Your current request is invalid"
-
-            response_str = json.dumps(response_dict)
-            print(f"response_str -> {response_str}")
-            writer.write(response_str.encode("utf-8"))
-            await writer.drain()
+                response["status"] = 1
+                response["error_message"] = "Invalid request"
+                await sendResponse(writer, response)
 
         except asyncio.TimeoutError:
             print(
                 f"[{str(client)}] No data received in {TIMEOUT_SECONDS} seconds. Closing the connection."
             )
-            writer.write(b'{"status":1, "message":"Timeout!"}')
-            await writer.drain()
+            await sendResponse(writer, {"status": 1, "error_message": "Timeout!"})
             break
 
         except Exception as e:
             print(f"[{str(client)}] Error: " + str(e))
             print(f"詳細なトレースバック情報:\n{traceback.format_exc()}")
-            response_message = f'{{"status":1, "message":{str(e)}}}'
-            writer.write(response_message.encode("utf-8"))
-            await writer.drain()
+            await sendResponse(writer, {"status": 1, "error_message": str(e)})
             break
 
+    removeClientFromChatroom(client)
+    del username_to_chatclient[client.username]
     print("Closing current connection to", client_address)
     writer.close()
     await writer.wait_closed()
 
 
-async def main():
+async def main() -> None:
     server_address = "0.0.0.0"
     server_port = 9001
     server = await asyncio.start_server(handle_client, server_address, server_port)

@@ -1,5 +1,8 @@
 Commands
-create: This command create chatroom.
-join: You can join chatroom existing.
-list: Show chatroom you can join.
-exit: Close connection to server and exit app.
+login: Login server.
+create: This command create chatroom and make you host.
+join: Join chatroom existing.
+list: Show chatroom existing if you are not joining any chatroom, if not, show members on chatroom you have joined.
+send: Send message to all members on chatroom you have joined.
+leave: Leave chatroom.
+logout: Logout server and close app.

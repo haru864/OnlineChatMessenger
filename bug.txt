@@ -1,0 +1,4 @@
+
+create後にleaveすると、"You have not joined any chatroom"が表示される
+
+
