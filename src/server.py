@@ -79,6 +79,7 @@ async def handle_client(
         try:
             request_dict = await getRequest(reader)
             print(f"request_dict -> {request_dict}")
+            print(f"client.chatroom -> {client.chatroom}")
             command = request_dict.get("command")
             response = {}
 
@@ -89,8 +90,8 @@ async def handle_client(
                 break
 
             elif command == "leave":
-                removeClientFromChatroom(client)
                 if client.chatroom:
+                    removeClientFromChatroom(client)
                     response["status"] = 0
                 else:
                     response["status"] = 1

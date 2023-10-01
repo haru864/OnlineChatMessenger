@@ -105,6 +105,7 @@ while True:
                     # udp_socket.close()
             elif command == "leave":
                 if response["status"] == 0:
+                    print(f"leave from chatroom '{current_room}'")
                     current_room = None
             elif command == "list":
                 if "member_list" in response:
