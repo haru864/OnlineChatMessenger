@@ -11,11 +11,6 @@ BUFFER_SIZE: int = 256
 TIMEOUT_SECONDS: float = 60.0
 
 
-class UdpProtocol(asyncio.DatagramProtocol):
-    def datagram_received(self, data, addr):
-        print(f"(UDP) Received {data.decode()} from {addr}")
-
-
 async def getRequest(reader: asyncio.StreamReader) -> dict[str:Any]:
     data = await asyncio.wait_for(reader.readline(), TIMEOUT_SECONDS)
     response_str = data.decode("utf-8")
@@ -51,6 +46,7 @@ async def handle_client(
 
     while not client:
         request_dict = await getRequest(reader)
+        print(f"request_dict -> {request_dict}")
         command = request_dict.get("command")
         username = request_dict.get("username")
         if command != "login":
@@ -72,7 +68,7 @@ async def handle_client(
             client = chat.ChatClient(client_address[0], client_address[1], username)
             username_to_chatclient[client.username] = client
             print(f"User '{client.username}' login")
-            response = {"status": 0}
+            response = {"status": 0, "username": username}
         await sendResponse(writer, response)
 
     while True:
@@ -88,6 +84,23 @@ async def handle_client(
                 response["status"] = 0
                 await sendResponse(writer, response)
                 break
+
+            elif command == "list":
+                response["status"] = 0
+                if client.chatroom is None:
+                    roomname_list = [
+                        chatroom.roomname for chatroom in roomname_to_chatroom.values()
+                    ]
+                    response["room_list"] = roomname_list
+                else:
+                    members = [
+                        f"{participant.username}(host)"
+                        if participant == client.chatroom.host
+                        else participant.username
+                        for participant in client.chatroom.participants
+                    ]
+                    response["member_list"] = members
+                await sendResponse(writer, response)
 
             elif command == "leave":
                 if client.chatroom:
@@ -109,38 +122,18 @@ async def handle_client(
                         transport,
                         protocol,
                     ) = await asyncio.get_running_loop().create_datagram_endpoint(
-                        lambda: UdpProtocol(), local_addr=("0.0.0.0", 0)
+                        lambda: chat.ChatRoom(
+                            roomname, max_num_of_participants, client
+                        ),
+                        local_addr=("0.0.0.0", 0),
                     )
-                    new_chatroom = chat.ChatRoom(
-                        transport,
-                        roomname,
-                        max_num_of_participants,
-                        client,
-                    )
-                    roomname_to_chatroom[roomname] = new_chatroom
+                    roomname_to_chatroom[roomname] = protocol
                     print(
-                        f"Chatroom '{roomname}' is created, UDP on ({new_chatroom.getUdpAddress()}, {new_chatroom.getUdpPort()})"
+                        f"Chatroom '{roomname}' is created, UDP on ({protocol.getUdpAddress()}, {protocol.getUdpPort()})"
                     )
                     response["status"] = 0
-                    response["udp_address"] = new_chatroom.getUdpAddress()
-                    response["udp_port"] = new_chatroom.getUdpPort()
-                await sendResponse(writer, response)
-
-            elif command == "list":
-                response["status"] = 0
-                if client.chatroom is None:
-                    roomname_list = [
-                        chatroom.roomname for chatroom in roomname_to_chatroom.values()
-                    ]
-                    response["room_list"] = roomname_list
-                else:
-                    members = [
-                        f"{participant.username}(host)"
-                        if participant == client.chatroom.host
-                        else participant.username
-                        for participant in client.chatroom.participants
-                    ]
-                    response["member_list"] = members
+                    response["udp_address"] = protocol.getUdpAddress()
+                    response["udp_port"] = protocol.getUdpPort()
                 await sendResponse(writer, response)
 
             elif command == "join":

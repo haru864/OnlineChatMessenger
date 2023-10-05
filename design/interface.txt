@@ -7,6 +7,7 @@
 レスポンス
 {
     "status": {status},              // 終了ステータス 成功:0、エラー:1
+    "username": "{username}",        // ユーザー名（ログイン成功時のみ設定）
     "error_message": "{message}"     // エラーメッセージ（エラー時のみ設定）
 }
 
@@ -57,9 +58,7 @@
 リクエスト
 {
     "command": "send",              //
-    "roomname": "{roomname}",       // 参加した部屋を示す文字列
-    "message": "{message}",         // メッセージのサイズ
-    "size": "{message-size}"        // チャットに参加した全ての人に送信するメッセージ
+    "message": "{message}",         // チャットルームの全参加者に送信するメッセージ
 }
 レスポンス
 {

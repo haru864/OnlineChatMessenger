@@ -4,5 +4,6 @@ create: This command create chatroom and make you host.
 join: Join chatroom existing.
 list: Show chatroom existing if you are not joining any chatroom, if not, show members on chatroom you have joined.
 send: Send message to all members on chatroom you have joined.
+receive: Receive message in chatroom.
 leave: Leave chatroom.
 logout: Logout server and close app.
